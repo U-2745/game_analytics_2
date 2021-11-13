@@ -1,0 +1,58 @@
+import time
+import fileinput
+import requests
+#https://analytics.amplitude.com/u2745/dashboard/ui5i9dm
+
+def save_data(current_log, logs_path): #локальное сохранение данных в случае ошибки
+    logs = open(logs_path, 'a')
+    logs.write(current_log + "\n")
+    logs.close()
+
+def send_old_data(logs_path): #выгрузка локально сохранённых данных
+    with fileinput.input(logs_path, inplace=True) as lines:
+        for line in lines:
+            try:
+                response = requests.post('https://api.amplitude.com/2/httpapi', data=line)
+            except BaseException:
+                print(line,sep = '')
+
+def create_data_events(the_id, time_start, time_passed): #формирование данных для запросов
+    data = str({
+             "api_key": "some_key", #тут секрет (:
+             "events": [
+                 {
+                     "user_id": the_id,
+                     "session_id": time_start,
+                     "event_type": "Identity number"
+                     },
+                 {
+                     "user_id": the_id,
+                     "session_id": time_start,
+                     "event_type": "[Amplitude] Start Session",
+                     "time": time_start
+                     },
+                 {
+                     "user_id": the_id,
+                     "session_id": time_start,
+                     "event_type": "[Amplitude] End Session",
+                     "time": time_passed
+                     }
+                 ]
+             })
+    return data
+
+logs_path = "logs.txt" #место локального хранения неотправленных данных
+
+send_old_data(logs_path) #отправка всех локальных данных при начале работы скрипта
+time_start = time.time_ns() // 1000000 #время старта сессии
+the_id = time_start%10000000 #id пользователя
+while True:
+    time.sleep(5)
+    time_passed = time.time_ns() // 1000000 #время конца сессии
+    data = create_data_events(the_id, time_start, time_passed) #создание данных для запросов
+    send_old_data(logs_path) #отправка всех локальных данных при очередной попытке отправить нынешние запросы
+    try:
+        response = requests.post('https://api.amplitude.com/2/httpapi', data=data) #пробуем отправить запросы
+        print(111)
+    except BaseException:
+        save_data(data, logs_path) #если запросы отправить не получается, сохраняем их локально
